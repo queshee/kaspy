@@ -45,18 +45,18 @@ class AuthClient:
     def __repr__(self) -> str:
         return (
             f"AuthClient(\n"
-                f"public_key={self.public_key},\n"
-                f"private_key={self.private_key},\n"
-                f"pk={self.pk},\n"
-                f"pk_tag={self.pk_tag},\n"
-                f"device_id={self.device_id},\n"
-                f"install_id={self.install_id},\n"
-                f"pin_hash={self.pin_hash},\n"
-                f"raw_mode={self._raw_mode},\n"
-                f"step={self.step},\n"
-                f"process_id={self.process_id},\n"
-                f"token_sn={self.token_sn},\n"
-                f"x509={self.x509}\n"
+                f"public_key={self.public_key}"
+                f"private_key={self.private_key}"
+                f"pk={self.pk}"
+                f"pk_tag={self.pk_tag}"
+                f"device_id={self.device_id}"
+                f"install_id={self.install_id}"
+                f"pin_hash={self.pin_hash}"
+                f"raw_mode={self._raw_mode}"
+                f"step={self.step}"
+                f"process_id={self.process_id}"
+                f"token_sn={self.token_sn}"
+                f"x509={self.x509}"
             )
 
     @classmethod
