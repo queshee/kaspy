@@ -41,22 +41,27 @@ class AuthClient:
         self.token_sn: str = token_sn
         self.x509: str = x509
         self.user_id_hash: str = user_id_hash
+    
+    def __str__(self) -> str:
+        def mask(value: Optional[str]) -> str:
+            if value is None:
+                return "None"
+            return value[:2] + "*****" + value[-2:]
 
-    def __repr__(self) -> str:
         return (
-            f"AuthClient(\n"
-                f"public_key={self.public_key}"
-                f"private_key={self.private_key}"
-                f"pk={self.pk}"
-                f"pk_tag={self.pk_tag}"
-                f"device_id={self.device_id}"
-                f"install_id={self.install_id}"
-                f"pin_hash={self.pin_hash}"
-                f"raw_mode={self._raw_mode}"
-                f"step={self.step}"
-                f"process_id={self.process_id}"
-                f"token_sn={self.token_sn}"
-                f"x509={self.x509}"
+            f"AuthClient("
+                f"public_key={mask(self.public_key)}, "
+                f"private_key={mask(self.private_key)}, "
+                f"pk={mask(self.pk)}, "
+                f"pk_tag={mask(self.pk_tag)}, "
+                f"device_id={mask(self.device_id)}, "
+                f"install_id={mask(self.install_id)}, "
+                f"pin_hash={mask(self.pin_hash)}, "
+                f"raw_mode={self._raw_mode}, "
+                f"step={self.step}, "
+                f"process_id={mask(self.process_id)}, "
+                f"token_sn={mask(self.token_sn)}, "
+                f"x509={mask(self.x509)}"
             )
 
     @classmethod
