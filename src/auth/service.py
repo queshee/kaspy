@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
 
-from src.auth import exceptions, schemas, crypto, utils, validation
+from src.auth import exceptions, schemas, utils, validation
+from src.auth.keys import Keys
+from src.auth.storage import Storage
 
 if TYPE_CHECKING:
     from src.auth.transport import Transport
@@ -66,25 +68,26 @@ class AuthClient:
 
     @classmethod
     async def from_files(cls, transport: Transport, raw_mode: bool = False, with_session: bool = True) -> AuthClient:
-        if not utils.check_keys_device():
-            private_key, public_key = crypto.generate_keypair_base64()
-            pin_hash = crypto.generate_pin_hash()
-            device_id = crypto.generate_upper_uuid()
-            install_id = crypto.generate_upper_uuid()
-            utils.save_device(device_id, install_id, pin_hash)
-            utils.save_keys(private_key, public_key)
+        if not Storage.check_keys():
+            Storage.save_keys(*Keys.generate_keypair_base64())
+        if not Storage.check_device():
+            Storage.save_device(
+                Keys.generate_upper_uuid(),
+                Keys.generate_upper_uuid(),
+                Keys.generate_pin_hash(),
+            )
 
         self = cls(transport, raw_mode=raw_mode)
 
         if with_session:
-            if not utils.check_session():
+            if not Storage.check_session():
                 raise exceptions.KaspiPayError("Session not found")
-            self.x509, self.token_sn, self.user_id_hash = utils.get_session()
+            self.x509, self.token_sn, self.user_id_hash = Storage.get_session()
 
-        self.private_key, self.public_key = crypto.get_keys()
-        self.device_id, self.install_id, self.pin_hash = utils.get_device()
-        self.pk = crypto.get_pk(self.public_key)
-        self.pk_tag = crypto.get_pk_tag(self.public_key)
+        self.private_key, self.public_key = Storage.get_keys()
+        self.device_id, self.install_id, self.pin_hash = Storage.get_device()
+        self.pk = Keys.get_pk(self.public_key)
+        self.pk_tag = Keys.get_pk_tag(self.public_key)
 
         if with_session:
             if await self._is_valid_session(
@@ -144,7 +147,6 @@ class AuthClient:
             data=body_data,
         )
 
-        print(body.asdict_with_aliases())
         headers = schemas.StepHeaders(
             cookie=schemas.StepCookie(
                 device_id=self.device_id,
@@ -160,7 +162,6 @@ class AuthClient:
             payload=body,   
             headers=headers,
         )
-        print(data)
         meta = validation.ResponseValidator.init(data)
         self.process_id = meta.p_id
         self.step = schemas.Step.SECOND
@@ -246,7 +247,7 @@ class AuthClient:
             process_id=self.process_id,
             signed=schemas.Signed(
                 data=data_to_sign.base64(),
-                sign=crypto.sign_data(data_to_sign.base64(), private_key=self.private_key)
+                sign=Keys.sign_data(data_to_sign.base64(), private_key=self.private_key)
             ),
         )
         finish_url: str = f"{self.transport.base_url}/api/v1/kpentrance/finish"
@@ -254,13 +255,14 @@ class AuthClient:
         pre_headers = schemas.PreFinishHeaders(
             x_time=utils.get_current_time(),
             x_pktag=self.pk_tag,
-            x_su=crypto.compute_x_su(url=finish_url)
+            x_su=Keys.compute_x_su(url=finish_url)
         )
         pre_headers_dict = pre_headers.asdict_with_aliases()
-        x_sign: str = crypto.compute_x_sign(
+        x_sign: str = Keys.compute_x_sign(
             url=finish_url, 
             headers=pre_headers_dict, 
-            x_sh=pre_headers.x_sh
+            x_sh=pre_headers.x_sh,
+            private_key=self.private_key,
         )
 
         headers = schemas.FinishHeaders.from_pre(pre_headers, x_sign=x_sign)
@@ -271,10 +273,15 @@ class AuthClient:
             headers=headers,
         )
         result: schemas.FinishResponse = validation.ResponseValidator.finish(data) 
+        Storage.save_session(
+            x509=result.x509, 
+            token_sn=result.token_sn, 
+            user_id_hash=result.user_id_hash
+        )
         self.token_sn = result.token_sn
         self.x509 = result.x509
         self.user_id_hash = result.user_id_hash
-        utils.save_session(self.x509, self.token_sn, self.user_id_hash)
+        self.authenticated = True
         return result if not self._raw_mode else data
 
     async def logout(self) -> None:
