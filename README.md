@@ -69,7 +69,5 @@ if __name__ == "__main__":
 - `src/auth/validation.py` — Валидация ответов сервера и обработка ошибок.
 
 ## Контакты
-Для связи по вопросам работы библиотеки:
-
-<img src="telegram_qr.png" width="250" alt="Telegram QR-код"/>
+Для связи по вопросам работы библиотеки: Telegram [@SharipovAlan](https://t.me/SharipovAlan)
 
