@@ -32,14 +32,11 @@ pip install aiohttp cryptography
 import asyncio
 import aiohttp
 from src.auth.service import AuthClient
-from src.auth.transport import Transport
 
 async def main():
     async with aiohttp.ClientSession() as session:
-        transport = Transport(session=session)
-        
         # Инициализация клиента (загрузит существующую сессию или создаст новую)
-        auth_client = await AuthClient.from_files(transport=transport, with_session=False)
+        auth_client = await AuthClient.from_files(session=session, with_session=False)
         
         # Шаг 1: Инициализация сессии
         meta = await auth_client.init()

@@ -7,13 +7,15 @@ from src.auth.keys import Keys
 from src.auth.storage import Storage
 
 if TYPE_CHECKING:
+    import aiohttp
     from src.auth.transport import Transport
 
 
 class AuthClient:
     def __init__(
         self, 
-        transport: Transport,
+        transport: Optional[Transport] = None,
+        session: Optional[aiohttp.ClientSession] = None,
         public_key: Optional[str] = None,
         private_key: Optional[str] = None,
         pk: Optional[str] = None,
@@ -26,6 +28,11 @@ class AuthClient:
         user_id_hash: Optional[str] = None,
         raw_mode: bool = False,
     ):
+        if transport is None:
+            if session is None:
+                raise ValueError("Either transport or session must be provided")
+            from src.auth.transport import Transport
+            transport = Transport(session=session)
         self.transport = transport
         self._raw_mode: bool = raw_mode
         self.step: schemas.Step = schemas.Step.FIRST
@@ -64,10 +71,23 @@ class AuthClient:
                 f"process_id={mask(self.process_id)}, "
                 f"token_sn={mask(self.token_sn)}, "
                 f"x509={mask(self.x509)}"
-            )
+            f")"
+        )
 
     @classmethod
-    async def from_files(cls, transport: Transport, raw_mode: bool = False, with_session: bool = True) -> AuthClient:
+    async def from_files(
+        cls, 
+        transport: Optional[Transport] = None, 
+        session: Optional[aiohttp.ClientSession] = None,
+        raw_mode: bool = False, 
+        with_session: bool = True
+    ) -> AuthClient:
+        if transport is None:
+            if session is None:
+                raise ValueError("Either transport or session must be provided")
+            from src.auth.transport import Transport
+            transport = Transport(session=session)
+
         if not Storage.check_keys():
             Storage.save_keys(*Keys.generate_keypair_base64())
         if not Storage.check_device():
@@ -77,7 +97,7 @@ class AuthClient:
                 Keys.generate_pin_hash(),
             )
 
-        self = cls(transport, raw_mode=raw_mode)
+        self = cls(transport=transport, raw_mode=raw_mode)
 
         if with_session:
             if not Storage.check_session():
