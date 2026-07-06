@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Optional, TYPE_CHECKING
 
-from src.auth import exceptions, schemas, crypto, utils, validation
+from src.auth import exceptions, schemas, utils, validation
+from src.auth.keys import Keys
+from src.auth.storage import Storage
 
 if TYPE_CHECKING:
     from src.auth.transport import Transport
@@ -66,25 +68,26 @@ class AuthClient:
 
     @classmethod
     async def from_files(cls, transport: Transport, raw_mode: bool = False, with_session: bool = True) -> AuthClient:
-        if not utils.check_keys_device():
-            private_key, public_key = crypto.generate_keypair_base64()
-            pin_hash = crypto.generate_pin_hash()
-            device_id = crypto.generate_upper_uuid()
-            install_id = crypto.generate_upper_uuid()
-            utils.save_device(device_id, install_id, pin_hash)
-            utils.save_keys(private_key, public_key)
+        if not Storage.check_keys():
+            Storage.save_keys(*Keys.generate_keypair_base64())
+        if not Storage.check_device():
+            Storage.save_device(
+                Keys.generate_upper_uuid(),
+                Keys.generate_upper_uuid(),
+                Keys.generate_pin_hash(),
+            )
 
         self = cls(transport, raw_mode=raw_mode)
 
         if with_session:
-            if not utils.check_session():
+            if not Storage.check_session():
                 raise exceptions.KaspiPayError("Session not found")
-            self.x509, self.token_sn, self.user_id_hash = utils.get_session()
+            self.x509, self.token_sn, self.user_id_hash = Storage.get_session()
 
-        self.private_key, self.public_key = crypto.get_keys()
-        self.device_id, self.install_id, self.pin_hash = utils.get_device()
-        self.pk = crypto.get_pk(self.public_key)
-        self.pk_tag = crypto.get_pk_tag(self.public_key)
+        self.private_key, self.public_key = Storage.get_keys()
+        self.device_id, self.install_id, self.pin_hash = Storage.get_device()
+        self.pk = Keys.get_pk(self.public_key)
+        self.pk_tag = Keys.get_pk_tag(self.public_key)
 
         if with_session:
             if await self._is_valid_session(
@@ -135,23 +138,23 @@ class AuthClient:
         self._already_auth()
         self._check_step(schemas.Step.FIRST)
             
-        body_data: schemas.FirstStepRequestData = schemas.FirstStepRequestData(
-            deviceId=self.device_id,
-            installId=self.install_id,
+        body_data = schemas.FirstStepRequestData(
+            device_id=self.device_id,
+            install_id=self.install_id,
         )   
 
-        body: schemas.FirstStepRequest = schemas.FirstStepRequest(
-            Data=body_data    
+        body = schemas.FirstStepRequest(
+            data=body_data,
         )
 
-        headers: schemas.StepHeaders = schemas.StepHeaders(
-            Cookie=schemas.StepCookie(
-                deviceId=self.device_id,
-                installId=self.install_id,
+        headers = schemas.StepHeaders(
+            cookie=schemas.StepCookie(
+                device_id=self.device_id,
+                install_id=self.install_id,
                 pk=self.pk,
-                pkTag=self.pk_tag,
+                pk_tag=self.pk_tag,
             ),
-            Referer=body_data.referer,
+            referer=body_data.referer,
         )
 
         data: dict = await self.transport.post(
@@ -168,23 +171,25 @@ class AuthClient:
     async def send_otp(self, phone_number: str) -> schemas.Meta:
         self._already_auth()
         self._check_step(schemas.Step.SECOND)
-            
+
+        otp_data = schemas.SecondStepRequestData(phone_number=phone_number)
+
         body = schemas.SecondStepRequest(
-            data=schemas.SecondStepRequestData(phoneNumber=phone_number),
             meta=schemas.Meta(
-                pId=self.process_id,
+                p_id=self.process_id,
                 sn=schemas.SN.VIEW_ENTER_OTP,
             ),
+            data=otp_data.asdict_with_aliases(),
         )
 
-        headers: schemas.StepHeaders = schemas.StepHeaders(
-            Cookie=schemas.StepCookie(
-                deviceId=self.device_id,
-                installId=self.install_id,
+        headers = schemas.StepHeaders(
+            cookie=schemas.StepCookie(
+                device_id=self.device_id,
+                install_id=self.install_id,
                 pk=self.pk,
-                pkTag=self.pk_tag,
+                pk_tag=self.pk_tag,
             ),
-            Referer=body.referer,
+            referer=body.referer,
         )
 
         data: dict = await self.transport.post(
@@ -200,21 +205,21 @@ class AuthClient:
         self._check_step(schemas.Step.THIRD)
         
         body = schemas.ThirdStepRequest(
-            data=schemas.ThirdStepRequestData(userOtp=otp),
+            data=schemas.ThirdStepRequestData(user_otp=otp),
             meta=schemas.Meta(
-                pId=self.process_id,
+                p_id=self.process_id,
                 sn=schemas.SN.VIEW_ENTER_LOGIN_PASSWORD,
             ),
         )
 
-        headers: schemas.StepHeaders = schemas.StepHeaders(
-            Cookie=schemas.StepCookie(
-                deviceId=self.device_id,
-                installId=self.install_id,
+        headers = schemas.StepHeaders(
+            cookie=schemas.StepCookie(
+                device_id=self.device_id,
+                install_id=self.install_id,
                 pk=self.pk,
-                pkTag=self.pk_tag,
+                pk_tag=self.pk_tag,
             ),
-            Referer=body.referer,
+            referer=body.referer,
         )
 
         data: dict = await self.transport.post(
@@ -229,35 +234,38 @@ class AuthClient:
         self._already_auth()
         self._check_step(schemas.Step.FINISH)
 
-        data_to_sign: schemas.DataToSign = schemas.DataToSign(
-            installId=self.install_id,
+        data_to_sign = schemas.DataToSign(
+            install_id=self.install_id,
             auth=[
                 schemas.Auth()
             ],
             time=utils.get_current_time()
         )
         
-        body: schemas.FinishRequest = schemas.FinishRequest(
-            guard=schemas.Guard(pinHash=self.pin_hash, x509=self.public_key),
-            processId=self.process_id,
+        body = schemas.FinishRequest(
+            guard=schemas.Guard(pin_hash=self.pin_hash, x509=self.public_key),
+            process_id=self.process_id,
             signed=schemas.Signed(
                 data=data_to_sign.base64(),
-                sign=crypto.sign_data(data_to_sign.base64(), private_key=self.private_key)
+                sign=Keys.sign_data(data_to_sign.base64(), private_key=self.private_key)
             ),
         )
         finish_url: str = f"{self.transport.base_url}/api/v1/kpentrance/finish"
 
-        pre_headers: schemas.PreFinishHeaders = schemas.PreFinishHeaders(
+        pre_headers = schemas.PreFinishHeaders(
             x_time=utils.get_current_time(),
             x_pktag=self.pk_tag,
-            x_su=crypto.compute_x_su(url=finish_url)
+            x_su=Keys.compute_x_su(url=finish_url)
         )
-        x_sign: str = crypto.compute_x_sign(url=finish_url, headers=pre_headers.model_dump(by_alias=True), x_sh=pre_headers.x_sh)
+        pre_headers_dict = pre_headers.asdict_with_aliases()
+        x_sign: str = Keys.compute_x_sign(
+            url=finish_url, 
+            headers=pre_headers_dict, 
+            x_sh=pre_headers.x_sh,
+            private_key=self.private_key,
+        )
 
-        headers: schemas.FinishHeaders = schemas.FinishHeaders(
-            **pre_headers.model_dump(by_alias=True),
-            **{"x-sign": x_sign},
-        )
+        headers = schemas.FinishHeaders.from_pre(pre_headers, x_sign=x_sign)
 
         data: dict = await self.transport.post(
             "api/v1/kpentrance/finish",
@@ -265,15 +273,20 @@ class AuthClient:
             headers=headers,
         )
         result: schemas.FinishResponse = validation.ResponseValidator.finish(data) 
+        Storage.save_session(
+            x509=result.x509, 
+            token_sn=result.token_sn, 
+            user_id_hash=result.user_id_hash
+        )
         self.token_sn = result.token_sn
         self.x509 = result.x509
         self.user_id_hash = result.user_id_hash
-        utils.save_session(self.x509, self.token_sn, self.user_id_hash)
+        self.authenticated = True
         return result if not self._raw_mode else data
 
     async def logout(self) -> None:
         #TODO: Закончить
-        body: schemas.LogoutRequest = schemas.LogoutRequest(
-            DeviceId=self.device_id,
-            TokenSn=self.token_sn,
+        body = schemas.LogoutRequest(
+            device_id=self.device_id,
+            token_sn=self.token_sn,
         )

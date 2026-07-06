@@ -7,7 +7,7 @@ from src.auth.transport import Transport
 async def main():
     async with aiohttp.ClientSession() as session:
         transport = Transport(session=session)
-        auth_client = await AuthClient.from_files(transport=transport, with_session=True)
+        auth_client = await AuthClient.from_files(transport=transport, with_session=False)
         
         # Шаг 1: Инициализация
         data = await auth_client.init()
