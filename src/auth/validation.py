@@ -6,6 +6,8 @@ from src.auth import schemas, exceptions
 class ResponseValidator:
     @staticmethod
     def init(data: dict) -> schemas.Meta:
+        if data.get("status") == 400:
+            raise exceptions.BadRequestError("Bad incoming request. Please try again")
         if data["view"].get("onOpenAlarm", {}).get("error") is not None:
             match data["view"]["onOpenAlarm"]["error"]["code"]:
                 case schemas.ErrorCode.OLD_VERSION_TO_UPDATE:
@@ -14,7 +16,7 @@ class ResponseValidator:
                     raise exceptions.TemporaryBlockedError("Your account has been temporarily blocked.")
                 case _:
                     raise exceptions.UnexpectedResponseError(data)
-        meta: schemas.Meta = schemas.Meta(**data["meta"])
+        meta = schemas.Meta.from_dict(data["meta"])
         match meta.sn:
             case schemas.SN.ENTER_PHONE_NUMBER:
                 return meta
@@ -23,7 +25,7 @@ class ResponseValidator:
 
     @staticmethod
     def send_otp(data: dict) -> schemas.Meta:
-        meta: schemas.Meta = schemas.Meta(**data["meta"])
+        meta = schemas.Meta.from_dict(data["meta"])
 
         view_error_code = (
             data.get("view", {})
@@ -70,7 +72,7 @@ class ResponseValidator:
                     raise exceptions.InvalidOtpError("Your OTP is incorrect.")
                 case _:
                     raise exceptions.UnexpectedResponseError(data)
-        meta: schemas.Meta = schemas.Meta(**data["meta"])
+        meta = schemas.Meta.from_dict(data["meta"])
         
         match meta.sn:
             case schemas.SN.MOBILE_DEVICE_REGISTRATION:
@@ -81,5 +83,5 @@ class ResponseValidator:
     @staticmethod
     def finish(data: dict) -> schemas.FinishResponse:
         if (data.get("success") is True) and (data.get("data", {}).get("success") is True):
-            return schemas.FinishResponse(**data["data"])
+            return schemas.FinishResponse.from_dict(data["data"])
         raise exceptions.UnexpectedResponseError(data)

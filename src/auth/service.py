@@ -135,23 +135,24 @@ class AuthClient:
         self._already_auth()
         self._check_step(schemas.Step.FIRST)
             
-        body_data: schemas.FirstStepRequestData = schemas.FirstStepRequestData(
-            deviceId=self.device_id,
-            installId=self.install_id,
+        body_data = schemas.FirstStepRequestData(
+            device_id=self.device_id,
+            install_id=self.install_id,
         )   
 
-        body: schemas.FirstStepRequest = schemas.FirstStepRequest(
-            Data=body_data    
+        body = schemas.FirstStepRequest(
+            data=body_data,
         )
 
-        headers: schemas.StepHeaders = schemas.StepHeaders(
-            Cookie=schemas.StepCookie(
-                deviceId=self.device_id,
-                installId=self.install_id,
+        print(body.asdict_with_aliases())
+        headers = schemas.StepHeaders(
+            cookie=schemas.StepCookie(
+                device_id=self.device_id,
+                install_id=self.install_id,
                 pk=self.pk,
-                pkTag=self.pk_tag,
+                pk_tag=self.pk_tag,
             ),
-            Referer=body_data.referer,
+            referer=body_data.referer,
         )
 
         data: dict = await self.transport.post(
@@ -159,6 +160,7 @@ class AuthClient:
             payload=body,   
             headers=headers,
         )
+        print(data)
         meta = validation.ResponseValidator.init(data)
         self.process_id = meta.p_id
         self.step = schemas.Step.SECOND
@@ -168,23 +170,25 @@ class AuthClient:
     async def send_otp(self, phone_number: str) -> schemas.Meta:
         self._already_auth()
         self._check_step(schemas.Step.SECOND)
-            
+
+        otp_data = schemas.SecondStepRequestData(phone_number=phone_number)
+
         body = schemas.SecondStepRequest(
-            data=schemas.SecondStepRequestData(phoneNumber=phone_number),
             meta=schemas.Meta(
-                pId=self.process_id,
+                p_id=self.process_id,
                 sn=schemas.SN.VIEW_ENTER_OTP,
             ),
+            data=otp_data.asdict_with_aliases(),
         )
 
-        headers: schemas.StepHeaders = schemas.StepHeaders(
-            Cookie=schemas.StepCookie(
-                deviceId=self.device_id,
-                installId=self.install_id,
+        headers = schemas.StepHeaders(
+            cookie=schemas.StepCookie(
+                device_id=self.device_id,
+                install_id=self.install_id,
                 pk=self.pk,
-                pkTag=self.pk_tag,
+                pk_tag=self.pk_tag,
             ),
-            Referer=body.referer,
+            referer=body.referer,
         )
 
         data: dict = await self.transport.post(
@@ -200,21 +204,21 @@ class AuthClient:
         self._check_step(schemas.Step.THIRD)
         
         body = schemas.ThirdStepRequest(
-            data=schemas.ThirdStepRequestData(userOtp=otp),
+            data=schemas.ThirdStepRequestData(user_otp=otp),
             meta=schemas.Meta(
-                pId=self.process_id,
+                p_id=self.process_id,
                 sn=schemas.SN.VIEW_ENTER_LOGIN_PASSWORD,
             ),
         )
 
-        headers: schemas.StepHeaders = schemas.StepHeaders(
-            Cookie=schemas.StepCookie(
-                deviceId=self.device_id,
-                installId=self.install_id,
+        headers = schemas.StepHeaders(
+            cookie=schemas.StepCookie(
+                device_id=self.device_id,
+                install_id=self.install_id,
                 pk=self.pk,
-                pkTag=self.pk_tag,
+                pk_tag=self.pk_tag,
             ),
-            Referer=body.referer,
+            referer=body.referer,
         )
 
         data: dict = await self.transport.post(
@@ -229,17 +233,17 @@ class AuthClient:
         self._already_auth()
         self._check_step(schemas.Step.FINISH)
 
-        data_to_sign: schemas.DataToSign = schemas.DataToSign(
-            installId=self.install_id,
+        data_to_sign = schemas.DataToSign(
+            install_id=self.install_id,
             auth=[
                 schemas.Auth()
             ],
             time=utils.get_current_time()
         )
         
-        body: schemas.FinishRequest = schemas.FinishRequest(
-            guard=schemas.Guard(pinHash=self.pin_hash, x509=self.public_key),
-            processId=self.process_id,
+        body = schemas.FinishRequest(
+            guard=schemas.Guard(pin_hash=self.pin_hash, x509=self.public_key),
+            process_id=self.process_id,
             signed=schemas.Signed(
                 data=data_to_sign.base64(),
                 sign=crypto.sign_data(data_to_sign.base64(), private_key=self.private_key)
@@ -247,17 +251,19 @@ class AuthClient:
         )
         finish_url: str = f"{self.transport.base_url}/api/v1/kpentrance/finish"
 
-        pre_headers: schemas.PreFinishHeaders = schemas.PreFinishHeaders(
+        pre_headers = schemas.PreFinishHeaders(
             x_time=utils.get_current_time(),
             x_pktag=self.pk_tag,
             x_su=crypto.compute_x_su(url=finish_url)
         )
-        x_sign: str = crypto.compute_x_sign(url=finish_url, headers=pre_headers.model_dump(by_alias=True), x_sh=pre_headers.x_sh)
-
-        headers: schemas.FinishHeaders = schemas.FinishHeaders(
-            **pre_headers.model_dump(by_alias=True),
-            **{"x-sign": x_sign},
+        pre_headers_dict = pre_headers.asdict_with_aliases()
+        x_sign: str = crypto.compute_x_sign(
+            url=finish_url, 
+            headers=pre_headers_dict, 
+            x_sh=pre_headers.x_sh
         )
+
+        headers = schemas.FinishHeaders.from_pre(pre_headers, x_sign=x_sign)
 
         data: dict = await self.transport.post(
             "api/v1/kpentrance/finish",
@@ -273,7 +279,7 @@ class AuthClient:
 
     async def logout(self) -> None:
         #TODO: Закончить
-        body: schemas.LogoutRequest = schemas.LogoutRequest(
-            DeviceId=self.device_id,
-            TokenSn=self.token_sn,
+        body = schemas.LogoutRequest(
+            device_id=self.device_id,
+            token_sn=self.token_sn,
         )
