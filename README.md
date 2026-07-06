@@ -68,6 +68,6 @@ if __name__ == "__main__":
 - `src/auth/transport.py` — HTTP-транспорт.
 - `src/auth/validation.py` — Валидация ответов сервера и обработка ошибок.
 
-## Контакты
+## Связь
 Для связи по вопросам работы библиотеки: Telegram [@SharipovAlan](https://t.me/SharipovAlan)
-
+ 
